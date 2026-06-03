@@ -1,0 +1,932 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes, viewport-fit=cover">
+    <meta name="robots" content="noindex, nofollow">
+    <meta name="googlebot" content="noindex">
+    <title>Private Task Manager | Calendar & Data v1.3.5</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <script src="https://cdn.sheetjs.com/xlsx-0.20.2/package/dist/xlsx.full.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <style>
+        * {
+            box-sizing: border-box;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        body {
+            background: #e9f0f5;
+            margin: 0;
+            padding: 12px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+        }
+        .main-container {
+            max-width: 1400px;
+            width: 100%;
+            background: white;
+            border-radius: 24px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+            overflow: hidden;
+            padding: 16px 18px 24px;
+        }
+        .header-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+        .help-btn {
+            background: #5a6e7a;
+            border: none;
+            border-radius: 40px;
+            padding: 6px 14px;
+            color: white;
+            cursor: pointer;
+            font-size: 0.8rem;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .tabs {
+            display: flex;
+            gap: 6px;
+            margin-bottom: 18px;
+            border-bottom: 2px solid #ddd;
+            padding-bottom: 6px;
+        }
+        .tab-btn {
+            background: #e9ecef;
+            border: none;
+            padding: 8px 20px;
+            font-size: 1rem;
+            font-weight: bold;
+            border-radius: 30px 30px 0 0;
+            cursor: pointer;
+            transition: 0.2s;
+            color: #2c3e50;
+        }
+        .tab-btn.active {
+            background: #2c7da0;
+            color: white;
+        }
+        .tab-pane {
+            display: none;
+        }
+        .tab-pane.active {
+            display: block;
+        }
+        /* Calendar styles */
+        .toolbar {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 16px;
+            gap: 8px;
+        }
+        .nav-buttons {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+        }
+        .nav-buttons button {
+            background: #2c7da0;
+            border: none;
+            color: white;
+            padding: 6px 14px;
+            border-radius: 40px;
+            cursor: pointer;
+            font-weight: bold;
+            font-size: 0.85rem;
+        }
+        .month-year {
+            font-size: 1.3rem;
+            font-weight: 600;
+            color: #0b3b4f;
+            min-width: 160px;
+            text-align: center;
+        }
+        .calendar-grid {
+            display: grid;
+            grid-template-columns: repeat(7, 1fr);
+            gap: 5px;
+            margin-top: 12px;
+        }
+        .weekday {
+            text-align: center;
+            font-weight: bold;
+            padding: 8px 0;
+            background: #d9e9f2;
+            border-radius: 16px;
+            color: #1f5068;
+            font-size: 0.8rem;
+        }
+        .calendar-day {
+            background: #ffffff;
+            border: 1px solid #cfdfe8;
+            border-radius: 14px;
+            min-height: 90px;
+            padding: 6px;
+            cursor: pointer;
+            transition: 0.1s;
+            position: relative;
+        }
+        .calendar-day:hover {
+            background: #fef9e3;
+            border-color: #f3b33d;
+        }
+        .calendar-day.holiday {
+            background: #ffeaea;
+            border-color: #e74c3c;
+        }
+        .calendar-day.holiday .day-number {
+            background: #e74c3c;
+            color: white;
+        }
+        .day-number {
+            font-weight: bold;
+            font-size: 1rem;
+            margin-bottom: 4px;
+            display: inline-block;
+            background: #eff3f6;
+            padding: 0 6px;
+            border-radius: 20px;
+        }
+        .holiday-badge {
+            font-size: 0.6rem;
+            color: #e74c3c;
+            font-weight: bold;
+            margin-top: 2px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .task-preview {
+            font-size: 0.65rem;
+            color: #2c5a6e;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            background: #eef4fc;
+            padding: 2px 4px;
+            border-radius: 10px;
+            margin-top: 3px;
+            white-space: nowrap;
+        }
+        .has-task {
+            border-left: 4px solid #f39c12;
+        }
+        .task-popup {
+            position: fixed;
+            background: #2d2f36;
+            color: #f0f0f0;
+            padding: 10px 14px;
+            border-radius: 16px;
+            max-width: 300px;
+            z-index: 2000;
+            font-size: 0.8rem;
+            pointer-events: none;
+            box-shadow: 0 8px 16px rgba(0,0,0,0.3);
+            border-left: 4px solid #ffb347;
+        }
+        /* Data tab styles */
+        .data-panel {
+            padding: 5px 0;
+        }
+        .data-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 16px;
+            font-size: 0.8rem;
+        }
+        .data-table th, .data-table td {
+            border: 1px solid #ccc;
+            padding: 6px 4px;
+            text-align: center;
+            vertical-align: middle;
+        }
+        .data-table th {
+            background: #2c7da0;
+            color: white;
+            font-size: 0.75rem;
+            padding: 8px 2px;
+        }
+        .data-table input {
+            width: 100%;
+            padding: 4px;
+            border: 1px solid #bbb;
+            border-radius: 6px;
+            font-size: 0.75rem;
+            text-align: right;
+        }
+        .data-row-name {
+            display: flex;
+            gap: 4px;
+            align-items: center;
+        }
+        .data-row-name input {
+            flex: 1;
+            text-align: left;
+        }
+        .delete-row-btn {
+            background: #e74c3c;
+            border: none;
+            border-radius: 20px;
+            padding: 4px 8px;
+            color: white;
+            cursor: pointer;
+            font-size: 0.65rem;
+            white-space: nowrap;
+        }
+        .result-cell {
+            background: #e8f4f8;
+            font-weight: bold;
+            color: #1a5d7a;
+        }
+        .result-cell input {
+            background: #e8f4f8;
+            font-weight: bold;
+            color: #1a5d7a;
+        }
+        .section-buttons {
+            display: flex;
+            gap: 8px;
+            margin: 12px 0;
+            flex-wrap: wrap;
+        }
+        .section-buttons button {
+            background: #3f7e6b;
+            border: none;
+            padding: 6px 14px;
+            border-radius: 30px;
+            color: white;
+            cursor: pointer;
+            font-weight: bold;
+            font-size: 0.75rem;
+        }
+        .reminders-container {
+            margin-top: 20px;
+            border-top: 2px solid #ddd;
+            padding-top: 12px;
+        }
+        .reminders-container h4 {
+            font-size: 1rem;
+            margin: 0 0 10px 0;
+            color: #2c7da0;
+        }
+        .text-row-item {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 10px;
+            align-items: flex-start;
+            background: #f9f9f9;
+            padding: 6px;
+            border-radius: 14px;
+        }
+        .text-row-item textarea {
+            flex: 1;
+            padding: 6px;
+            border-radius: 10px;
+            border: 1px solid #ccc;
+            font-family: monospace;
+            resize: vertical;
+            font-size: 0.75rem;
+        }
+        .text-row-buttons {
+            display: flex;
+            gap: 4px;
+        }
+        .text-row-buttons button {
+            background: #5a6e7a;
+            padding: 4px 10px;
+            font-size: 0.7rem;
+        }
+        .btn-small {
+            background: #5a6e7a;
+            border: none;
+            border-radius: 20px;
+            padding: 4px 10px;
+            color: white;
+            cursor: pointer;
+            font-size: 0.7rem;
+        }
+        .warning-toast {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background: #e67e22;
+            color: white;
+            padding: 10px 16px;
+            border-radius: 50px;
+            z-index: 2500;
+            font-weight: bold;
+            font-size: 0.8rem;
+        }
+        /* Help Modal */
+        .help-modal {
+            display: none;
+            position: fixed;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            background: rgba(0,0,0,0.7);
+            z-index: 4000;
+            justify-content: center;
+            align-items: center;
+        }
+        .help-content {
+            background: white;
+            width: 90%;
+            max-width: 500px;
+            border-radius: 28px;
+            padding: 20px;
+            max-height: 80vh;
+            overflow-y: auto;
+        }
+        .help-content h3 {
+            color: #2c7da0;
+            margin-top: 0;
+        }
+        .help-content hr {
+            margin: 12px 0;
+        }
+        .close-help {
+            background: #2c7da0;
+            color: white;
+            border: none;
+            padding: 8px 20px;
+            border-radius: 30px;
+            cursor: pointer;
+            margin-top: 15px;
+        }
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            background: rgba(0,0,0,0.6);
+            z-index: 3000;
+            justify-content: center;
+            align-items: center;
+        }
+        .modal-content {
+            background: white;
+            width: 90%;
+            max-width: 650px;
+            border-radius: 28px;
+            padding: 16px;
+        }
+        .task-editor-toolbar {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            margin-bottom: 10px;
+            background: #f2f2f2;
+            padding: 8px;
+            border-radius: 40px;
+        }
+        .task-editor-toolbar button, .task-editor-toolbar select, .task-editor-toolbar input {
+            background: white;
+            border: 1px solid #bbb;
+            border-radius: 20px;
+            padding: 4px 10px;
+            cursor: pointer;
+            font-size: 0.75rem;
+        }
+        .task-textarea {
+            width: 100%;
+            min-height: 150px;
+            padding: 10px;
+            border-radius: 16px;
+            border: 1px solid #ccc;
+            font-size: 0.85rem;
+            overflow-y: auto;
+        }
+        .char-counter {
+            font-size: 0.7rem;
+            color: gray;
+            margin-top: 5px;
+            text-align: right;
+        }
+        .version {
+            font-size: 0.7rem;
+            color: #999;
+            text-align: right;
+            margin-top: 10px;
+        }
+        @media (max-width: 600px) {
+            .main-container { padding: 12px; }
+            .calendar-day { min-height: 70px; }
+            .month-year { font-size: 1.1rem; }
+            .data-table th, .data-table td { padding: 4px 2px; }
+            .data-table input { padding: 3px; font-size: 0.7rem; }
+        }
+    </style>
+</head>
+<body>
+<div class="main-container">
+    <div class="header-bar">
+        <div></div>
+        <button class="help-btn" id="helpBtn"><i class="fas fa-question-circle"></i> Help v1.3.5</button>
+    </div>
+    <div class="tabs">
+        <button class="tab-btn active" data-tab="calendar">📅 Calendar</button>
+        <button class="tab-btn" data-tab="data">📊 Data</button>
+    </div>
+
+    <!-- Calendar Tab -->
+    <div id="calendarTab" class="tab-pane active">
+        <div class="toolbar">
+            <div class="nav-buttons">
+                <button id="prevMonthBtn"><i class="fas fa-chevron-left"></i> Prev</button>
+                <button id="nextMonthBtn">Next <i class="fas fa-chevron-right"></i></button>
+                <button id="todayBtn">Today</button>
+            </div>
+            <div class="month-year" id="monthYearDisplay">June 2026</div>
+            <div class="data-actions">
+                <button id="backupBtn"><i class="fas fa-download"></i></button>
+                <button id="openBackupBtn"><i class="fas fa-upload"></i></button>
+                <button id="exportXLSXBtn"><i class="fas fa-file-excel"></i></button>
+                <button id="exportPDFBtn"><i class="fas fa-file-pdf"></i></button>
+            </div>
+        </div>
+        <div class="calendar-grid" id="calendarGrid"></div>
+    </div>
+
+    <!-- Data Tab -->
+    <div id="dataTab" class="tab-pane">
+        <div class="data-panel">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Name & Actions</th>
+                        <th>#1</th>
+                        <th>#2</th>
+                        <th>Result</th>
+                    </tr>
+                </thead>
+                <tbody id="dataTableBody"></tbody>
+            </table>
+            <div class="section-buttons">
+                <button id="addDataRowBtn"><i class="fas fa-plus"></i> Add Row</button>
+                <button id="rewriteDataBtn"><i class="fas fa-copy"></i> Copy #1→#2</button>
+            </div>
+            
+            <div class="reminders-container">
+                <h4><i class="fas fa-pen-alt"></i> Reminders</h4>
+                <div id="textRowsList"></div>
+                <div class="section-buttons">
+                    <button id="addTextRowBtn"><i class="fas fa-plus"></i> Add Reminder</button>
+                    <button id="backupDataBtn"><i class="fas fa-download"></i> Backup</button>
+                    <button id="openDataBackupBtn"><i class="fas fa-upload"></i> Open</button>
+                    <button id="exportDataXLSXBtn"><i class="fas fa-file-excel"></i> XLSX</button>
+                    <button id="exportDataPDFBtn"><i class="fas fa-file-pdf"></i> PDF</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Help Modal -->
+<div id="helpModal" class="help-modal">
+    <div class="help-content">
+        <h3><i class="fas fa-info-circle"></i> Help & Information</h3>
+        <p><strong>📅 Calendar Tab</strong><br>
+        • Click on any date to add/edit a task (max 250 characters)<br>
+        • Hover over dates with tasks to see preview<br>
+        • <span style="color:#e74c3c;">🔴 Red background dates</span> = Latvian official holidays<br>
+        • Use Prev/Next/Today buttons to navigate months<br>
+        • Data auto-saves locally in your browser</p>
+        <hr>
+        <p><strong>✏️ Task Editor</strong><br>
+        • Format text: Bold (B), Italic (I), Underline (U), Lists<br>
+        • Select text, then choose color or size<br>
+        • Copy/Paste buttons for easy editing<br>
+        • Character counter shows remaining limit</p>
+        <hr>
+        <p><strong>📊 Data Tab</strong><br>
+        • Manage number rows with automatic Result (First - Second)<br>
+        • Click "Delete" button to remove any row<br>
+        • "Copy #1→#2" copies all First values to Second<br>
+        • Reminders: text notes with Copy/Paste/Delete options</p>
+        <hr>
+        <p><strong>💾 Backup & Export</strong><br>
+        • Backup/Restore saves all your data to JSON file<br>
+        • Export to XLSX (Excel) or PDF format<br>
+        • Data is stored only on your device (localStorage)</p>
+        <hr>
+        <p><strong>🗓️ Latvian Holidays (marked in red)</strong><br>
+        • January 1 - New Year's Day<br>
+        • April/May - Easter (varies)<br>
+        • May 1 - Labour Day<br>
+        • June 23 - Midsummer's Eve<br>
+        • June 24 - Midsummer's Day (Jāņi)<br>
+        • November 18 - Independence Day<br>
+        • December 24-26 - Christmas</p>
+        <hr>
+        <p><i class="fas fa-database"></i> <strong>Data retention:</strong> Tasks older than 2 years are auto-cleaned<br>
+        <i class="fas fa-mobile-alt"></i> <strong>Mobile ready</strong> - Works on all devices<br>
+        <strong>Version 1.3.5</strong> | © Private Task Manager</p>
+        <button class="close-help" onclick="document.getElementById('helpModal').style.display='none'">Close</button>
+    </div>
+</div>
+
+<script>
+    // ==================== LATVIAN HOLIDAYS (fixed dates) ====================
+    function getLatvianHolidays(year) {
+        const holidays = {};
+        // Fixed date holidays
+        holidays[`${year}-01-01`] = "New Year's Day";
+        holidays[`${year}-05-01`] = "Labour Day";
+        holidays[`${year}-06-23`] = "Midsummer's Eve (Līgo)";
+        holidays[`${year}-06-24`] = "Midsummer's Day (Jāņi)";
+        holidays[`${year}-11-18`] = "Independence Day";
+        holidays[`${year}-12-24`] = "Christmas Eve";
+        holidays[`${year}-12-25`] = "Christmas Day";
+        holidays[`${year}-12-26`] = "Second Christmas Day";
+        
+        // Easter calculations (Western)
+        function getEaster(year) {
+            let a = year % 19;
+            let b = Math.floor(year / 100);
+            let c = year % 100;
+            let d = Math.floor(b / 4);
+            let e = b % 4;
+            let f = Math.floor((b + 8) / 25);
+            let g = Math.floor((b - f + 1) / 3);
+            let h = (19 * a + b - d - g + 15) % 30;
+            let i = Math.floor(c / 4);
+            let k = c % 4;
+            let l = (32 + 2 * e + 2 * i - h - k) % 7;
+            let m = Math.floor((a + 11 * h + 22 * l) / 451);
+            let month = Math.floor((h + l - 7 * m + 114) / 31);
+            let day = ((h + l - 7 * m + 114) % 31) + 1;
+            return new Date(year, month - 1, day);
+        }
+        const easter = getEaster(year);
+        const easterMonday = new Date(easter);
+        easterMonday.setDate(easter.getDate() + 1);
+        const goodFriday = new Date(easter);
+        goodFriday.setDate(easter.getDate() - 2);
+        
+        holidays[`${year}-${String(goodFriday.getMonth()+1).padStart(2,'0')}-${String(goodFriday.getDate()).padStart(2,'0')}`] = "Good Friday";
+        holidays[`${year}-${String(easter.getMonth()+1).padStart(2,'0')}-${String(easter.getDate()).padStart(2,'0')}`] = "Easter Sunday";
+        holidays[`${year}-${String(easterMonday.getMonth()+1).padStart(2,'0')}-${String(easterMonday.getDate()).padStart(2,'0')}`] = "Easter Monday";
+        
+        return holidays;
+    }
+
+    // ==================== CALENDAR MODULE ====================
+    let tasksDB = new Map();
+    let currentDisplayDate = new Date();
+    let popupDiv = null;
+    let currentHolidays = {};
+
+    function loadCalendarFromStorage() {
+        const stored = localStorage.getItem("calendar_tasks_v11");
+        if(stored) {
+            try {
+                const parsed = JSON.parse(stored);
+                tasksDB.clear();
+                for(let [date, content] of Object.entries(parsed)) {
+                    tasksDB.set(date, { htmlContent: content.htmlContent || content });
+                }
+            } catch(e) {}
+        }
+        cleanupOldYears(true);
+    }
+
+    function saveCalendarToStorage() {
+        const obj = {};
+        for(let [key, val] of tasksDB.entries()) obj[key] = { htmlContent: val.htmlContent };
+        localStorage.setItem("calendar_tasks_v11", JSON.stringify(obj));
+    }
+
+    function cleanupOldYears(showWarning = true) {
+        const today = new Date();
+        const twoYearsAgo = new Date(today.getFullYear() - 2, today.getMonth(), today.getDate());
+        let removedCount = 0;
+        for(let [dateStr] of tasksDB.entries()) {
+            const [year, month, day] = dateStr.split('-').map(Number);
+            const taskDate = new Date(year, month-1, day);
+            if(taskDate < twoYearsAgo) { tasksDB.delete(dateStr); removedCount++; }
+        }
+        if(removedCount > 0 && showWarning) showToast(`Cleared ${removedCount} old tasks`);
+        if(removedCount > 0) saveCalendarToStorage();
+    }
+
+    function formatDateKey(year, month, day) { return `${year}-${String(month+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`; }
+    function stripHtml(html) { let tmp = document.createElement('div'); tmp.innerHTML = html; return tmp.innerText || ''; }
+
+    function renderCalendar() {
+        const year = currentDisplayDate.getFullYear(), month = currentDisplayDate.getMonth();
+        currentHolidays = getLatvianHolidays(year);
+        
+        const firstDayOfMonth = new Date(year, month, 1);
+        let firstDayWeekday = firstDayOfMonth.getDay();
+        let startOffset = (firstDayWeekday === 0) ? 6 : firstDayWeekday - 1;
+        const daysInMonth = new Date(year, month+1, 0).getDate();
+        const grid = document.getElementById("calendarGrid");
+        grid.innerHTML = '';
+        const weekdays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+        weekdays.forEach(day => { let wd = document.createElement('div'); wd.className = 'weekday'; wd.innerText = day; grid.appendChild(wd); });
+        
+        for(let i = 0; i < 42; i++) {
+            const cell = document.createElement('div'); cell.className = 'calendar-day';
+            const currentRowDay = i - startOffset + 1;
+            const isValid = (currentRowDay >= 1 && currentRowDay <= daysInMonth);
+            let displayDay = isValid ? currentRowDay : '', fullDateStr = '';
+            if(isValid) fullDateStr = formatDateKey(year, month, displayDay);
+            
+            const dateSpan = document.createElement('div'); dateSpan.className = 'day-number'; dateSpan.innerText = displayDay || ''; 
+            cell.appendChild(dateSpan);
+            
+            // Check if holiday
+            const isHoliday = isValid && currentHolidays[fullDateStr];
+            if(isHoliday) {
+                cell.classList.add('holiday');
+                const holidayBadge = document.createElement('div');
+                holidayBadge.className = 'holiday-badge';
+                holidayBadge.innerText = currentHolidays[fullDateStr].substring(0, 12);
+                cell.appendChild(holidayBadge);
+            }
+            
+            if(isValid && tasksDB.has(fullDateStr)) {
+                cell.classList.add('has-task');
+                const taskObj = tasksDB.get(fullDateStr);
+                let plainText = stripHtml(taskObj.htmlContent);
+                if(plainText.length > 22) plainText = plainText.substring(0,19)+'...';
+                const preview = document.createElement('div'); preview.className = 'task-preview'; preview.innerText = plainText || 'Task'; 
+                cell.appendChild(preview);
+                cell.addEventListener('mouseenter', (e) => showTaskPopup(e, taskObj.htmlContent, fullDateStr));
+                cell.addEventListener('mouseleave', () => { if(popupDiv) popupDiv.remove(); });
+            }
+            if(isValid) cell.addEventListener('click', () => openTaskEditor(fullDateStr, year, month, displayDay));
+            else cell.style.background = '#f8fafc';
+            grid.appendChild(cell);
+        }
+        document.getElementById("monthYearDisplay").innerText = `${firstDayOfMonth.toLocaleString('default', { month: 'long' })} ${year}`;
+    }
+
+    function showTaskPopup(event, html, date) {
+        if(popupDiv) popupDiv.remove();
+        popupDiv = document.createElement('div'); popupDiv.className = 'task-popup';
+        popupDiv.innerHTML = `<strong>📅 ${date}</strong><hr style="margin:4px 0">${html || 'No description'}`;
+        document.body.appendChild(popupDiv);
+        const rect = event.target.getBoundingClientRect();
+        let left = rect.right + 8, top = rect.top - 5;
+        if(left + popupDiv.offsetWidth > window.innerWidth) left = rect.left - popupDiv.offsetWidth - 8;
+        popupDiv.style.left = `${left}px`; popupDiv.style.top = `${top}px`;
+    }
+
+    // Rich text editor for tasks
+    function openTaskEditor(dateKey, year, month, day) {
+        const modal = document.createElement('div'); modal.className = 'modal'; modal.style.display = 'flex';
+        modal.innerHTML = `
+            <div class="modal-content">
+                <h3 style="margin:0 0 10px 0">Edit Task for ${year}-${month+1}-${day}</h3>
+                <div class="task-editor-toolbar">
+                    <select id="fontSizeSelect"><option value="12">12px</option><option value="14" selected>14px</option><option value="18">18px</option><option value="22">22px</option></select>
+                    <input type="color" id="fontColorPicker" value="#000000" style="width: 35px; height: 30px;">
+                    <button id="boldBtn" title="Bold"><b>B</b></button>
+                    <button id="italicBtn" title="Italic"><i>I</i></button>
+                    <button id="underlineBtn" title="Underline"><u>U</u></button>
+                    <button id="listBtn" title="Bullet List"><i class="fas fa-list-ul"></i></button>
+                    <button id="copyBtn" title="Copy"><i class="far fa-copy"></i></button>
+                    <button id="pasteBtn" title="Paste"><i class="fas fa-paste"></i></button>
+                </div>
+                <div contenteditable="true" id="taskEditField" class="task-textarea"></div>
+                <div class="char-counter"><span id="charCount">0</span>/250 characters</div>
+                <div style="margin-top:12px; display:flex; gap:8px; justify-content:flex-end;">
+                    <button id="saveTaskModalBtn" style="background:#2ecc71;color:white;padding:6px 16px;border-radius:30px;">Save</button>
+                    <button id="closeTaskModalBtn" style="background:#95a5a6;padding:6px 16px;border-radius:30px;">Cancel</button>
+                </div>
+            </div>`;
+        document.body.appendChild(modal);
+        
+        const existing = tasksDB.get(dateKey);
+        const editor = document.getElementById('taskEditField');
+        if(existing && existing.htmlContent) editor.innerHTML = existing.htmlContent;
+        
+        function updateCharCounter() {
+            let text = editor.innerText || '';
+            let len = text.length;
+            document.getElementById('charCount').innerText = len;
+            document.getElementById('charCount').style.color = len > 250 ? 'red' : 'gray';
+        }
+        editor.addEventListener('input', updateCharCounter);
+        updateCharCounter();
+        
+        document.getElementById('fontSizeSelect').addEventListener('change', (e) => {
+            const size = e.target.value;
+            document.execCommand('styleWithCSS', false, true);
+            const selection = window.getSelection();
+            if (!selection.isCollapsed) {
+                const span = document.createElement('span');
+                span.style.fontSize = size + 'px';
+                const range = selection.getRangeAt(0);
+                range.surroundContents(span);
+            } else {
+                editor.style.fontSize = size + 'px';
+            }
+            editor.focus();
+        });
+        
+        document.getElementById('fontColorPicker').addEventListener('input', (e) => {
+            document.execCommand('styleWithCSS', false, true);
+            document.execCommand('foreColor', false, e.target.value);
+            editor.focus();
+        });
+        
+        document.getElementById('boldBtn').onclick = () => { document.execCommand('bold'); editor.focus(); };
+        document.getElementById('italicBtn').onclick = () => { document.execCommand('italic'); editor.focus(); };
+        document.getElementById('underlineBtn').onclick = () => { document.execCommand('underline'); editor.focus(); };
+        document.getElementById('listBtn').onclick = () => { document.execCommand('insertUnorderedList'); editor.focus(); };
+        
+        document.getElementById('copyBtn').onclick = async () => {
+            const selection = window.getSelection();
+            if(selection && selection.toString()) {
+                await navigator.clipboard.writeText(selection.toString());
+            } else {
+                await navigator.clipboard.writeText(editor.innerText);
+            }
+            showToast('Copied!');
+        };
+        
+        document.getElementById('pasteBtn').onclick = async () => {
+            const text = await navigator.clipboard.readText();
+            document.execCommand('insertText', false, text);
+            editor.focus();
+        };
+        
+        document.getElementById('saveTaskModalBtn').onclick = () => {
+            let html = editor.innerHTML;
+            if(stripHtml(html).length > 250) { alert('Max 250 characters'); return; }
+            if(stripHtml(html).length === 0) tasksDB.delete(dateKey);
+            else tasksDB.set(dateKey, { htmlContent: html });
+            saveCalendarToStorage(); renderCalendar(); modal.remove();
+        };
+        document.getElementById('closeTaskModalBtn').onclick = () => modal.remove();
+        modal.onclick = (e) => { if(e.target === modal) modal.remove(); };
+    }
+
+    // Help button
+    document.getElementById('helpBtn').onclick = () => {
+        document.getElementById('helpModal').style.display = 'flex';
+    };
+    document.getElementById('helpModal').onclick = (e) => {
+        if(e.target === document.getElementById('helpModal')) {
+            document.getElementById('helpModal').style.display = 'none';
+        }
+    };
+
+    // ==================== DATA MODULE (same as before, compact) ====================
+    let dataRows = [];
+    let textRows = [];
+
+    function formatNumber(value) {
+        if (value === undefined || value === null || isNaN(value)) return '0,00';
+        let num = parseFloat(value);
+        if (isNaN(num)) return '0,00';
+        let formatted = num.toFixed(2);
+        formatted = formatted.replace('.', ',');
+        return formatted;
+    }
+
+    function parseNumber(value) {
+        if (typeof value === 'string') {
+            let cleaned = value.replace(',', '.');
+            let num = parseFloat(cleaned);
+            return isNaN(num) ? 0 : num;
+        }
+        return parseFloat(value) || 0;
+    }
+
+    function calculateResult(row) {
+        return parseNumber(row.first) - parseNumber(row.second);
+    }
+
+    function renderDataTable() {
+        const tbody = document.getElementById('dataTableBody');
+        if(!tbody) return;
+        tbody.innerHTML = '';
+        dataRows.forEach((row, idx) => {
+            const tr = document.createElement('tr');
+            let result = calculateResult(row);
+            row.result = result;
+            tr.innerHTML = `
+                <td class="data-row-name">
+                    <input type="text" class="row-name" value="${escapeHtml(row.name)}" data-idx="${idx}" style="flex:1; min-width:60px;">
+                    <button class="delete-row-btn" data-idx="${idx}" title="Delete Row"><i class="fas fa-trash"></i> Del</button>
+                 </td>
+                 <td><input type="text" class="first-num" value="${formatNumber(row.first)}" data-idx="${idx}"></td>
+                 <td><input type="text" class="second-num" value="${formatNumber(row.second)}" data-idx="${idx}"></td>
+                <td class="result-cell"><input type="text" class="result-num" value="${formatNumber(result)}" data-idx="${idx}" readonly style="background:#e8f4f8; font-weight:bold;"></td>
+            `;
+            tbody.appendChild(tr);
+        });
+        attachDataEvents();
+    }
+    
+    function attachDataEvents() {
+        document.querySelectorAll('.row-name').forEach(inp => inp.addEventListener('change', (e) => { dataRows[e.target.dataset.idx].name = e.target.value; saveDataToStorage(); }));
+        document.querySelectorAll('.first-num').forEach(inp => inp.addEventListener('change', (e) => { let idx = e.target.dataset.idx; dataRows[idx].first = parseNumber(e.target.value); saveDataToStorage(); renderDataTable(); }));
+        document.querySelectorAll('.second-num').forEach(inp => inp.addEventListener('change', (e) => { let idx = e.target.dataset.idx; dataRows[idx].second = parseNumber(e.target.value); saveDataToStorage(); renderDataTable(); }));
+        document.querySelectorAll('.delete-row-btn').forEach(btn => btn.addEventListener('click', (e) => { let idx = parseInt(e.currentTarget.dataset.idx); if(confirm(`Delete row "${dataRows[idx].name}"?`)) { dataRows.splice(idx, 1); saveDataToStorage(); renderDataTable(); showToast('Row deleted'); } }));
+    }
+    
+    function renderTextRows() {
+        const container = document.getElementById('textRowsList');
+        if(!container) return;
+        container.innerHTML = '';
+        if (textRows.length === 0) {
+            const emptyMsg = document.createElement('div');
+            emptyMsg.style.color = '#999';
+            emptyMsg.style.fontSize = '0.75rem';
+            emptyMsg.style.padding = '8px';
+            emptyMsg.innerText = 'No reminders. Click "Add Reminder"';
+            container.appendChild(emptyMsg);
+        }
+        textRows.forEach((text, idx) => {
+            const div = document.createElement('div'); div.className = 'text-row-item';
+            div.innerHTML = `<textarea maxlength="250" class="text-content" data-idx="${idx}" rows="2" placeholder="Reminder text (max 250 chars)...">${escapeHtml(text)}</textarea>
+                <div class="text-row-buttons">
+                    <button class="btn-small copy-text-btn" data-idx="${idx}"><i class="far fa-copy"></i></button>
+                    <button class="btn-small paste-text-btn" data-idx="${idx}"><i class="fas fa-paste"></i></button>
+                    <button class="btn-small delete-text-btn" data-idx="${idx}" style="background:#e74c3c;"><i class="fas fa-trash"></i></button>
+                </div>`;
+            container.appendChild(div);
+        });
+        document.querySelectorAll('.text-content').forEach(t => t.addEventListener('change', (e) => { textRows[e.target.dataset.idx] = e.target.value.substring(0, 250); saveDataToStorage(); }));
+        document.querySelectorAll('.copy-text-btn').forEach(btn => btn.addEventListener('click', async (e) => { const idx = e.currentTarget.dataset.idx; await navigator.clipboard.writeText(textRows[idx] || ''); showToast('Copied!'); }));
+        document.querySelectorAll('.paste-text-btn').forEach(btn => btn.addEventListener('click', async (e) => { const idx = e.currentTarget.dataset.idx; const text = await navigator.clipboard.readText(); textRows[idx] = text.substring(0, 250); saveDataToStorage(); renderTextRows(); showToast('Pasted'); }));
+        document.querySelectorAll('.delete-text-btn').forEach(btn => btn.addEventListener('click', (e) => { const idx = e.currentTarget.dataset.idx; textRows.splice(idx, 1); saveDataToStorage(); renderTextRows(); showToast('Reminder deleted'); }));
+    }
+
+    function escapeHtml(str) { if(!str) return ''; return str.replace(/[&<>]/g, m => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;' }[m])); }
+
+    function loadDataFromStorage() {
+        const stored = localStorage.getItem("app_data_rows_v5");
+        if(stored) {
+            try {
+                const parsed = JSON.parse(stored);
+                dataRows = parsed.dataRows || [];
+                textRows = parsed.textRows || [];
+                dataRows = dataRows.map((row, idx) => ({ name: row.name || `Data ${idx+1}`, first: row.first || 0, second: row.second || 0, result: 0 }));
+            } catch(e) { initDefaultData(); }
+        } else { initDefaultData(); }
+        if(dataRows.length === 0) initDefaultData();
+        renderDataTable();
+        renderTextRows();
+    }
+
+    function initDefaultData() {
+        dataRows = [{ name: "Data 1", first: 1250.50, second: 320.25, result: 0 }, { name: "Data 2", first: 850.00, second: 245.30, result: 0 }, { name: "Data 3", first: 400.75, second: 125.00, result: 0 }];
+        textRows = ["Check inventory weekly", "Review budget on Friday"];
+        dataRows.forEach(row => { row.result = calculateResult(row); });
+    }
+
+    function saveDataToStorage() { localStorage.setItem("app_data_rows_v5", JSON.stringify({ dataRows, textRows })); }
+
+    // Event listeners
+    document.getElementById('addDataRowBtn')?.addEventListener('click', () => { dataRows.push({ name: `Data ${dataRows.length+1}`, first: 0, second: 0, result: 0 }); saveDataToStorage(); renderDataTable(); showToast('Row added'); });
+    document.getElementById('rewriteDataBtn')?.addEventListener('click', () => { dataRows.forEach(row => { row.second = parseNumber(row.first); row.result = calculateResult(row); }); saveDataToStorage(); renderDataTable(); showToast("Copied #1 → #2"); });
+    document.getElementById('addTextRowBtn')?.addEventListener('click', () => { textRows.push(""); saveDataToStorage(); renderTextRows(); showToast('Reminder added'); });
+    
+    // Backup handlers (simplified)
+    document.getElementById('backupDataBtn')?.addEventListener('click', () => { const blob = new Blob([JSON.stringify({ dataRows, textRows }, null, 2)], {type:'application/json'}); const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=`data_backup_${new Date().toISOString().slice(0,19)}.json`; a.click(); URL.revokeObjectURL(a.href); showToast("Backup saved"); });
+    document.getElementById('openDataBackupBtn')?.addEventListener('click', () => { const inp=document.createElement('input'); inp.type='file'; inp.accept='application/json'; inp.onchange=e=>{ const file=e.target.files[0]; if(!file)return; const reader=new FileReader(); reader.onload=ev=>{ try{ const imp=JSON.parse(ev.target.result); dataRows=imp.dataRows || []; textRows=imp.textRows || []; dataRows = dataRows.map((row, idx) => ({ name: row.name || `Data ${idx+1}`, first: row.first || 0, second: row.second || 0, result: 0 })); saveDataToStorage(); renderDataTable(); renderTextRows(); showToast('Data restored'); } catch(err){ alert('Invalid file'); } }; reader.readAsText(file); }; inp.click(); });
+    document.getElementById('exportDataXLSXBtn')?.addEventListener('click', () => { const wsData = [["Name", "Number 1", "Number 2", "Result"]]; dataRows.forEach(r => wsData.push([r.name, formatNumber(r.first), formatNumber(r.second), formatNumber(r.result)])); wsData.push(["", "", "", ""], ["REMINDERS", "", "", ""]); textRows.forEach((t,idx) => wsData.push([`Reminder ${idx+1}`, t, "", ""])); const ws = XLSX.utils.aoa_to_sheet(wsData); const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "DataExport"); XLSX.writeFile(wb, `data_export_${new Date().toISOString().slice(0,10)}.xlsx`); showToast("XLSX exported"); });
+    document.getElementById('exportDataPDFBtn')?.addEventListener('click', async () => { showToast('Generating PDF...'); try { const { jsPDF } = window.jspdf; const div = document.createElement('div'); div.style.padding='16px'; div.style.background='white'; div.innerHTML = `<h2>Data Export</h2><table border="1"><tr><th>Name</th><th>#1</th><th>#2</th><th>Result</th></tr>${dataRows.map(r=>`<tr><td>${escapeHtml(r.name)}</td><td>${formatNumber(r.first)}</td><td>${formatNumber(r.second)}</td><td>${formatNumber(r.result)}</td></tr>`).join('')}</table><h3>Reminders</h3>${textRows.map((t,i)=>`<p><b>${i+1}:</b> ${escapeHtml(t)}</p>`).join('')}`; document.body.appendChild(div); const canvas = await html2canvas(div, { scale: 2 }); document.body.removeChild(div); const imgData = canvas.toDataURL('image/png'); const pdf = new jsPDF('portrait', 'mm', 'a4'); const imgWidth = 190; const imgHeight = (canvas.height * imgWidth) / canvas.width; pdf.addImage(imgData, 'PNG', 10, 10, imgWidth, imgHeight); pdf.save(`data_report_${new Date().toISOString().slice(0,10)}.pdf`); showToast("PDF exported"); } catch(e) { alert("PDF error"); } });
+
+    // Calendar backup/export (simplified)
+    document.getElementById('backupBtn').onclick = () => { const obj={}; for(let[k,v] of tasksDB.entries()) obj[k]=v.htmlContent; const blob=new Blob([JSON.stringify(obj,null,2)],{type:'application/json'}); const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=`calendar_backup_${new Date().toISOString().slice(0,19)}.json`; a.click(); URL.revokeObjectURL(a.href); showToast("Calendar backup"); };
+    document.getElementById('openBackupBtn').onclick = () => { const inp=document.createElement('input'); inp.type='file'; inp.accept='application/json'; inp.onchange=e=>{ const file=e.target.files[0]; if(!file)return; const reader=new FileReader(); reader.onload=ev=>{ try{ const imp=JSON.parse(ev.target.result); tasksDB.clear(); for(let[date,html] of Object.entries(imp)) tasksDB.set(date,{htmlContent:html}); saveCalendarToStorage(); cleanupOldYears(true); renderCalendar(); showToast('Calendar restored'); } catch(err){ alert('Invalid file'); } }; reader.readAsText(file); }; inp.click(); };
+    document.getElementById('exportXLSXBtn').onclick = () => { const rows=[['Date','Task HTML','Plain Text']]; for(let[date,{htmlContent}] of tasksDB.entries()) rows.push([date, htmlContent, stripHtml(htmlContent).substring(0,200)]); const ws=XLSX.utils.aoa_to_sheet(rows); const wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,ws,'Calendar Tasks'); XLSX.writeFile(wb,`calendar_${new Date().toISOString().slice(0,10)}.xlsx`); showToast('XLSX exported'); };
+    document.getElementById('exportPDFBtn').onclick = async () => { showToast('Generating PDF...'); try{ const {jsPDF}=window.jspdf; const div=document.createElement('div'); div.style.padding='16px'; div.innerHTML=`<h2>Calendar Tasks</h2><table border="1">${Array.from(tasksDB.entries()).map(([date,{htmlContent}])=>`<tr><td>${date}</td><td>${htmlContent}</td></tr>`).join('')}</table>`; document.body.appendChild(div); const canvas=await html2canvas(div,{scale:2}); document.body.removeChild(div); const imgData=canvas.toDataURL('image/png'); const pdf=new jsPDF('landscape','mm','a4'); const imgWidth=280; const imgHeight=(canvas.height*imgWidth)/canvas.width; pdf.addImage(imgData,'PNG',10,10,imgWidth,imgHeight); pdf.save(`calendar_${new Date().toISOString().slice(0,10)}.pdf`); showToast('PDF exported'); } catch(e){ alert('PDF error'); } };
+
+    function showToast(msg) { let t=document.createElement('div'); t.className='warning-toast'; t.innerText=msg; document.body.appendChild(t); setTimeout(()=>t.remove(),2500); }
+
+    // Tabs logic
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+            document.getElementById(`${btn.dataset.tab}Tab`).classList.add('active');
+            if(btn.dataset.tab === 'data') { renderDataTable(); renderTextRows(); }
+            else if(btn.dataset.tab === 'calendar') renderCalendar();
+        });
+    });
+
+    document.getElementById('prevMonthBtn').onclick = () => { currentDisplayDate.setMonth(currentDisplayDate.getMonth()-1); renderCalendar(); };
+    document.getElementById('nextMonthBtn').onclick = () => { currentDisplayDate.setMonth(currentDisplayDate.getMonth()+1); renderCalendar(); };
+    document.getElementById('todayBtn').onclick = () => { currentDisplayDate = new Date(); renderCalendar(); };
+    
+    loadCalendarFromStorage(); renderCalendar();
+    loadDataFromStorage();
+</script>
+</body>
+</html>
