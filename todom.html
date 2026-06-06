@@ -1,0 +1,397 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+    <meta name="robots" content="noindex, nofollow">
+    <title>Task Manager | Cross-Device Sync</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <script src="https://cdn.sheetjs.com/xlsx-0.20.2/package/dist/xlsx.full.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
+    <style>
+        * { box-sizing: border-box; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        body { background: #e9f0f5; margin: 0; padding: 12px; display: flex; justify-content: center; align-items: center; min-height: 100vh; }
+        .main-container { max-width: 1400px; width: 100%; background: white; border-radius: 24px; box-shadow: 0 10px 30px rgba(0,0,0,0.1); padding: 16px 18px 24px; }
+        .header-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; flex-wrap: wrap; gap: 8px; }
+        .sync-status { background: #e8f4f8; padding: 4px 12px; border-radius: 20px; font-size: 0.75rem; display: flex; align-items: center; gap: 6px; }
+        .sync-status.synced { background: #d4edda; color: #155724; }
+        .sync-status.syncing { background: #fff3cd; color: #856404; }
+        .sync-status.error { background: #f8d7da; color: #721c24; }
+        .help-btn { background: #5a6e7a; border: none; border-radius: 40px; padding: 6px 14px; color: white; cursor: pointer; }
+        .device-info { background: #e8f4f8; padding: 4px 8px; border-radius: 16px; font-size: 0.65rem; font-family: monospace; }
+        .tabs { display: flex; gap: 6px; margin-bottom: 18px; border-bottom: 2px solid #ddd; padding-bottom: 6px; }
+        .tab-btn { background: #e9ecef; border: none; padding: 8px 20px; font-size: 1rem; font-weight: bold; border-radius: 30px 30px 0 0; cursor: pointer; color: #2c3e50; }
+        .tab-btn.active { background: #2c7da0; color: white; }
+        .tab-pane { display: none; }
+        .tab-pane.active { display: block; }
+        .toolbar { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; margin-bottom: 16px; gap: 8px; }
+        .nav-buttons { display: flex; gap: 8px; }
+        .nav-buttons button, .data-actions button { background: #2c7da0; border: none; color: white; padding: 6px 14px; border-radius: 40px; cursor: pointer; font-weight: bold; }
+        .month-year { font-size: 1.3rem; font-weight: 600; color: #0b3b4f; min-width: 160px; text-align: center; }
+        .calendar-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 5px; margin-top: 12px; }
+        .weekday { text-align: center; font-weight: bold; padding: 8px 0; background: #d9e9f2; border-radius: 16px; color: #1f5068; font-size: 0.8rem; }
+        .calendar-day { background: #fff; border: 1px solid #cfdfe8; border-radius: 14px; min-height: 90px; padding: 6px; cursor: pointer; transition: 0.1s; }
+        .calendar-day:hover { background: #fef9e3; border-color: #f3b33d; }
+        .calendar-day.holiday { background: #ffeaea; border-color: #e74c3c; }
+        .calendar-day.holiday .day-number { background: #e74c3c; color: white; }
+        .day-number { font-weight: bold; font-size: 1rem; display: inline-block; background: #eff3f6; padding: 0 6px; border-radius: 20px; }
+        .holiday-badge { font-size: 0.6rem; color: #e74c3c; font-weight: bold; margin-top: 2px; }
+        .task-preview { font-size: 0.65rem; color: #2c5a6e; background: #eef4fc; padding: 2px 4px; border-radius: 10px; margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .has-task { border-left: 4px solid #f39c12; }
+        .task-popup { position: fixed; background: #2d2f36; color: #f0f0f0; padding: 10px 14px; border-radius: 16px; max-width: 300px; z-index: 2000; font-size: 0.8rem; pointer-events: none; box-shadow: 0 8px 16px rgba(0,0,0,0.3); border-left: 4px solid #ffb347; }
+        .data-table { width: 100%; border-collapse: collapse; margin-bottom: 16px; font-size: 0.8rem; }
+        .data-table th, .data-table td { border: 1px solid #ccc; padding: 6px 4px; text-align: center; }
+        .data-table th { background: #2c7da0; color: white; }
+        .data-table input { width: 100%; padding: 4px; border: 1px solid #bbb; border-radius: 6px; text-align: right; }
+        .data-row-name { display: flex; gap: 4px; align-items: center; }
+        .data-row-name input { flex: 1; text-align: left; }
+        .delete-row-btn { background: #e74c3c; border: none; border-radius: 20px; padding: 4px 8px; color: white; cursor: pointer; font-size: 0.65rem; }
+        .result-cell { background: #e8f4f8; font-weight: bold; }
+        .section-buttons { display: flex; gap: 8px; margin: 12px 0; flex-wrap: wrap; }
+        .section-buttons button { background: #3f7e6b; border: none; padding: 6px 14px; border-radius: 30px; color: white; cursor: pointer; font-weight: bold; font-size: 0.75rem; }
+        .reminders-container { margin-top: 20px; border-top: 2px solid #ddd; padding-top: 12px; }
+        .text-row-item { display: flex; gap: 8px; margin-bottom: 10px; background: #f9f9f9; padding: 6px; border-radius: 14px; }
+        .text-row-item textarea { flex: 1; padding: 6px; border-radius: 10px; border: 1px solid #ccc; font-size: 0.75rem; resize: vertical; }
+        .text-row-buttons { display: flex; gap: 4px; }
+        .btn-small { background: #5a6e7a; border: none; border-radius: 20px; padding: 4px 10px; color: white; cursor: pointer; font-size: 0.7rem; }
+        .warning-toast { position: fixed; bottom: 20px; right: 20px; background: #e67e22; color: white; padding: 10px 16px; border-radius: 50px; z-index: 2500; font-size: 0.8rem; }
+        .modal, .help-modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 4000; justify-content: center; align-items: center; }
+        .modal-content, .help-content { background: white; width: 90%; max-width: 600px; border-radius: 28px; padding: 20px; max-height: 80vh; overflow-y: auto; }
+        .task-editor-toolbar { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; background: #f2f2f2; padding: 8px; border-radius: 40px; }
+        .task-editor-toolbar button, .task-editor-toolbar select, .task-editor-toolbar input { background: white; border: 1px solid #bbb; border-radius: 20px; padding: 4px 10px; cursor: pointer; }
+        .task-textarea { width: 100%; min-height: 150px; padding: 10px; border-radius: 16px; border: 1px solid #ccc; font-size: 0.85rem; overflow-y: auto; }
+        .sync-panel { background: #f0f7ff; border-radius: 16px; padding: 10px; margin-bottom: 15px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; }
+        .sync-id { font-family: monospace; font-size: 11px; background: white; padding: 4px 8px; border-radius: 12px; word-break: break-all; }
+        @media (max-width: 600px) { .calendar-day { min-height: 70px; } .month-year { font-size: 1.1rem; } }
+    </style>
+</head>
+<body>
+<div class="main-container">
+    <div class="header-bar">
+        <div class="sync-status" id="syncStatus">
+            <i class="fas fa-cloud-upload-alt"></i> <span id="syncText">Initializing...</span>
+        </div>
+        <button class="help-btn" id="helpBtn"><i class="fas fa-question-circle"></i> Help</button>
+    </div>
+    
+    <!-- Sync ID Panel - Allows sharing same ID across devices -->
+    <div class="sync-panel" id="syncPanel">
+        <div style="display: flex; align-items: center; gap: 8px;">
+            <i class="fas fa-link"></i>
+            <span style="font-size: 0.75rem;">Sync ID:</span>
+            <span class="sync-id" id="syncIdDisplay">loading...</span>
+        </div>
+        <div style="display: flex; gap: 8px;">
+            <button id="copySyncIdBtn" style="background:#2c7da0;border:none;border-radius:20px;padding:4px 12px;color:white;cursor:pointer;font-size:0.7rem;"><i class="far fa-copy"></i> Copy ID</button>
+            <button id="resetSyncIdBtn" style="background:#e67e22;border:none;border-radius:20px;padding:4px 12px;color:white;cursor:pointer;font-size:0.7rem;"><i class="fas fa-sync-alt"></i> New ID</button>
+        </div>
+    </div>
+    
+    <div class="tabs"><button class="tab-btn active" data-tab="calendar">📅 Calendar</button><button class="tab-btn" data-tab="data">📊 Data</button></div>
+    
+    <div id="calendarTab" class="tab-pane active">
+        <div class="toolbar">
+            <div class="nav-buttons"><button id="prevMonthBtn">◀ Prev</button><button id="nextMonthBtn">Next ▶</button><button id="todayBtn">Today</button></div>
+            <div class="month-year" id="monthYearDisplay"></div>
+            <div class="data-actions"><button id="backupBtn">💾</button><button id="openBackupBtn">📂</button><button id="exportXLSXBtn">📊</button><button id="exportPDFBtn">📄</button></div>
+        </div>
+        <div class="calendar-grid" id="calendarGrid"></div>
+    </div>
+    <div id="dataTab" class="tab-pane">
+        <table class="data-table"><thead><tr><th>Name & Actions</th><th>#1</th><th>#2</th><th>Result</th></tr></thead><tbody id="dataTableBody"></tbody></table>
+        <div class="section-buttons"><button id="addDataRowBtn">+ Add Row</button><button id="rewriteDataBtn">📋 Copy #1→#2</button></div>
+        <div class="reminders-container"><h4>📝 Reminders</h4><div id="textRowsList"></div>
+        <div class="section-buttons"><button id="addTextRowBtn">+ Add Reminder</button><button id="backupDataBtn">💾 Backup</button><button id="openDataBackupBtn">📂 Open</button><button id="exportDataXLSXBtn">📊 XLSX</button><button id="exportDataPDFBtn">📄 PDF</button></div></div>
+    </div>
+</div>
+<div id="helpModal" class="help-modal"><div class="help-content"><h3>📖 Cross-Device Sync Guide</h3>
+<p><strong>🔑 Sync ID is the key!</strong> All devices with the SAME Sync ID share data.</p>
+<p><strong>To sync across devices:</strong></p>
+<ol style="margin-left: 20px;">
+<li>On Device 1: Copy the Sync ID (click "Copy ID")</li>
+<li>On Device 2: Click "New ID" → Paste the copied ID → OK</li>
+<li>Refresh both devices - data will sync!</li>
+</ol>
+<p><strong>Manual Backup:</strong> Use 💾 and 📂 buttons for extra safety</p>
+<button class="close-help" onclick="document.getElementById('helpModal').style.display='none'">Close</button></div></div>
+
+<script>
+// ===== FIREBASE CONFIG =====
+const firebaseConfig = {
+    apiKey: "AIzaSyCGebPPoZzKIhzWkVRyq4r3npSrUfCeldU",
+    authDomain: "taskm-sync.firebaseapp.com",
+    databaseURL: "https://taskm-sync-default-rtdb.asia-southeast1.firebasedatabase.app",
+    projectId: "taskm-sync",
+    storageBucket: "taskm-sync.firebasestorage.app",
+    messagingSenderId: "346850678373",
+    appId: "1:346850678373:web:51e6d213db2daca667588c"
+};
+// ==========================
+
+let db = null;
+let firebaseReady = false;
+let currentSyncId = null;
+
+// Get or create Sync ID (this is what you share between devices!)
+function getSyncId() {
+    let id = localStorage.getItem("sync_id");
+    if(!id) {
+        id = "sync_" + Date.now() + "_" + Math.random().toString(36).substr(2, 12);
+        localStorage.setItem("sync_id", id);
+    }
+    return id;
+}
+
+function setSyncId(newId) {
+    localStorage.setItem("sync_id", newId);
+    currentSyncId = newId;
+    document.getElementById('syncIdDisplay').innerText = newId;
+    // Reload data from cloud with new ID
+    if(firebaseReady && db) {
+        loadFromCloud();
+    }
+}
+
+function updateSyncStatus(status, message) {
+    const statusDiv = document.getElementById('syncStatus');
+    const textSpan = document.getElementById('syncText');
+    if(statusDiv) {
+        statusDiv.className = 'sync-status ' + status;
+        if(textSpan) textSpan.innerText = message;
+    }
+}
+
+function initFirebase() {
+    try {
+        firebase.initializeApp(firebaseConfig);
+        db = firebase.database();
+        firebaseReady = true;
+        
+        // Initialize Sync ID
+        currentSyncId = getSyncId();
+        document.getElementById('syncIdDisplay').innerText = currentSyncId;
+        
+        updateSyncStatus('syncing', 'Connecting...');
+        db.ref('.info/connected').on('value', (snap) => {
+            if(snap.val() === true) {
+                updateSyncStatus('synced', '☁️ Cloud sync active');
+                loadFromCloud();
+            } else {
+                updateSyncStatus('error', '⚠️ Offline mode');
+            }
+        });
+        return true;
+    } catch(e) {
+        updateSyncStatus('error', '❌ Connection failed');
+        return false;
+    }
+}
+
+function saveToCloud() {
+    if(!firebaseReady || !db || !currentSyncId) return;
+    const allData = {
+        tasks: Object.fromEntries([...tasksDB.entries()].map(([k,v]) => [k, v.htmlContent])),
+        data: { dataRows, textRows },
+        lastUpdated: Date.now()
+    };
+    db.ref(`shared_data/${currentSyncId}`).set(allData).catch(e => {
+        console.warn("Save error:", e);
+    });
+}
+
+function loadFromCloud() {
+    if(!firebaseReady || !db || !currentSyncId) return;
+    updateSyncStatus('syncing', '☁️ Loading...');
+    db.ref(`shared_data/${currentSyncId}`).once('value').then(snap => {
+        const data = snap.val();
+        if(data) {
+            let changed = false;
+            if(data.tasks) {
+                tasksDB.clear();
+                for(let [k,v] of Object.entries(data.tasks)) {
+                    tasksDB.set(k, { htmlContent: v });
+                }
+                changed = true;
+            }
+            if(data.data) {
+                if(data.data.dataRows) {
+                    dataRows = data.data.dataRows;
+                    textRows = data.data.textRows || [];
+                    dataRows = dataRows.map((r,i) => ({
+                        name: r.name || `Data ${i+1}`,
+                        first: r.first || 0,
+                        second: r.second || 0
+                    }));
+                    changed = true;
+                }
+            }
+            if(changed) {
+                renderCalendar();
+                renderDataTable();
+                renderTextRows();
+                toast('📡 Synced from cloud');
+            }
+        }
+        updateSyncStatus('synced', '☁️ Cloud sync active');
+    }).catch(e => {
+        console.warn("Load error:", e);
+        updateSyncStatus('error', '⚠️ Cloud error');
+    });
+}
+
+function saveLocalAndCloud() {
+    localStorage.setItem('tasks_local', JSON.stringify(Object.fromEntries([...tasksDB.entries()].map(([k,v])=>[k,v.htmlContent]))));
+    localStorage.setItem('data_local', JSON.stringify({dataRows, textRows}));
+    saveToCloud();
+}
+
+// ===== APP CORE =====
+let tasksDB = new Map();
+let currentDisplayDate = new Date();
+let dataRows = [];
+let textRows = [];
+
+function getHolidays(y){
+    let h={};
+    h[`${y}-01-01`]="New Year"; h[`${y}-05-01`]="Labour"; h[`${y}-06-23`]="Līgo"; h[`${y}-06-24`]="Jāņi";
+    h[`${y}-11-18`]="Independence"; h[`${y}-12-24`]="Christmas Eve"; h[`${y}-12-25`]="Christmas"; h[`${y}-12-26`]="Boxing Day";
+    let a=y%19,b=Math.floor(y/100),c=y%100,d=Math.floor(b/4),e=b%4,f=Math.floor((b+8)/25),g=Math.floor((b-f+1)/3),h2=(19*a+b-d-g+15)%30,i=Math.floor(c/4),k=c%4,l=(32+2*e+2*i-h2-k)%7,m=Math.floor((a+11*h2+22*l)/451),mo=Math.floor((h2+l-7*m+114)/31),da=((h2+l-7*m+114)%31)+1;
+    let easter=new Date(y,mo-1,da); h[`${y}-${String(easter.getMonth()+1).padStart(2,'0')}-${String(easter.getDate()).padStart(2,'0')}`]="Easter";
+    let em=new Date(easter); em.setDate(easter.getDate()+1); h[`${y}-${String(em.getMonth()+1).padStart(2,'0')}-${String(em.getDate()).padStart(2,'0')}`]="Easter Mon";
+    return h;
+}
+function stripHtml(h){let d=document.createElement('div'); d.innerHTML=h; return d.innerText||'';}
+function formatNum(v){let n=parseFloat(v); if(isNaN(n)) return '0,00'; return n.toFixed(2).replace('.',',');}
+function parseNum(v){if(typeof v==='string') v=v.replace(',','.'); let n=parseFloat(v); return isNaN(n)?0:n;}
+function escape(s){if(!s)return ''; return s.replace(/[&<>]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[m]));}
+function toast(m){let t=document.createElement('div'); t.className='warning-toast'; t.innerText=m; document.body.appendChild(t); setTimeout(()=>t.remove(),2500);}
+
+function renderCalendar(){
+    let y=currentDisplayDate.getFullYear(), m=currentDisplayDate.getMonth(), hol=getHolidays(y);
+    let first=new Date(y,m,1), startOff=(first.getDay()===0?6:first.getDay()-1), days=new Date(y,m+1,0).getDate();
+    let grid=document.getElementById('calendarGrid'); grid.innerHTML='';
+    ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].forEach(d=>{let w=document.createElement('div'); w.className='weekday'; w.innerText=d; grid.appendChild(w);});
+    for(let i=0;i<42;i++){
+        let cell=document.createElement('div'); cell.className='calendar-day';
+        let day=i-startOff+1, ok=day>=1&&day<=days;
+        let ds=ok?`${y}-${String(m+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`:'';
+        let num=document.createElement('div'); num.className='day-number'; num.innerText=ok?day:''; cell.appendChild(num);
+        if(ok&&hol[ds]){cell.classList.add('holiday'); let b=document.createElement('div'); b.className='holiday-badge'; b.innerText=hol[ds]; cell.appendChild(b);}
+        if(ok&&tasksDB.has(ds)){cell.classList.add('has-task'); let t=tasksDB.get(ds); let txt=stripHtml(t.htmlContent); let p=document.createElement('div'); p.className='task-preview'; p.innerText=txt.length>22?txt.slice(0,19)+'...':txt; cell.appendChild(p);
+            cell.onmouseenter=(e)=>{let pop=document.createElement('div'); pop.className='task-popup'; pop.innerHTML=`<strong>${ds}</strong><hr>${t.htmlContent||''}`; document.body.appendChild(pop); let r=e.target.getBoundingClientRect(); pop.style.left=(r.right+8)+'px'; pop.style.top=(r.top-5)+'px'; if(parseInt(pop.style.left)+pop.offsetWidth>window.innerWidth) pop.style.left=(r.left-pop.offsetWidth-8)+'px'; cell._popup=pop;};
+            cell.onmouseleave=()=>{if(cell._popup)cell._popup.remove();};
+        }
+        if(ok) cell.onclick=()=>openEditor(ds,y,m,day);
+        else cell.style.background='#f8fafc';
+        grid.appendChild(cell);
+    }
+    document.getElementById('monthYearDisplay').innerText=`${first.toLocaleString('default',{month:'long'})} ${y}`;
+}
+
+function openEditor(ds,y,m,d){
+    let modal=document.createElement('div'); modal.className='modal'; modal.style.display='flex';
+    modal.innerHTML=`<div class="modal-content"><h3>Task for ${y}-${m+1}-${d}</h3><div class="task-editor-toolbar"><select id="fs"><option>12</option><option selected>14</option><option>18</option><option>22</option></select><input type="color" id="fc" value="#000"><button id="bb">B</button><button id="it">I</button><button id="ul">U</button><button id="lst">• List</button><button id="cp">Copy</button><button id="pst">Paste</button></div><div contenteditable="true" id="ed" class="task-textarea"></div><div style="text-align:right"><span id="cnt">0</span>/250</div><div style="margin-top:12px;display:flex;gap:8px;justify-content:flex-end;"><button id="sv" style="background:#2ecc71;padding:6px 16px;border-radius:30px;">Save</button><button id="cn" style="background:#95a5a6;padding:6px 16px;border-radius:30px;">Cancel</button></div></div>`;
+    document.body.appendChild(modal);
+    let ex=tasksDB.get(ds), ed=document.getElementById('ed');
+    if(ex) ed.innerHTML=ex.htmlContent;
+    let upd=()=>{let l=ed.innerText.length; document.getElementById('cnt').innerText=l;};
+    ed.addEventListener('input',upd); upd();
+    document.getElementById('fs').onchange=(e)=>{ed.style.fontSize=e.target.value+'px';};
+    document.getElementById('fc').oninput=(e)=>{document.execCommand('foreColor',false,e.target.value); ed.focus();};
+    document.getElementById('bb').onclick=()=>{document.execCommand('bold'); ed.focus();};
+    document.getElementById('it').onclick=()=>{document.execCommand('italic'); ed.focus();};
+    document.getElementById('ul').onclick=()=>{document.execCommand('underline'); ed.focus();};
+    document.getElementById('lst').onclick=()=>{document.execCommand('insertUnorderedList'); ed.focus();};
+    document.getElementById('cp').onclick=async()=>{let s=window.getSelection(); await navigator.clipboard.writeText(s?s.toString():ed.innerText); toast('Copied');};
+    document.getElementById('pst').onclick=async()=>{let t=await navigator.clipboard.readText(); document.execCommand('insertText',false,t); ed.focus();};
+    document.getElementById('sv').onclick=()=>{let h=ed.innerHTML; if(stripHtml(h).length>250){alert('Max 250 chars');return;} if(stripHtml(h).length===0)tasksDB.delete(ds); else tasksDB.set(ds,{htmlContent:h}); saveLocalAndCloud(); renderCalendar(); modal.remove(); toast('Saved');};
+    document.getElementById('cn').onclick=()=>modal.remove();
+    modal.onclick=(e)=>{if(e.target===modal)modal.remove();};
+}
+
+function renderDataTable(){
+    let tbody=document.getElementById('dataTableBody'); if(!tbody)return;
+    tbody.innerHTML='';
+    dataRows.forEach((r,i)=>{let res=parseNum(r.first)-parseNum(r.second);
+        let tr=document.createElement('tr');
+        tr.innerHTML=`<td class="data-row-name"><input type="text" class="rn" value="${escape(r.name)}" data-idx="${i}"><button class="del" data-idx="${i}" style="background:#e74c3c;border:none;border-radius:20px;padding:4px 8px;color:white;cursor:pointer;">Del</button></td>
+                     <td><input type="text" class="fst" value="${formatNum(r.first)}" data-idx="${i}"></td>
+                     <td><input type="text" class="snd" value="${formatNum(r.second)}" data-idx="${i}"></td>
+                     <td class="result-cell">${formatNum(res)}</td>`;
+        tbody.appendChild(tr);
+    });
+    document.querySelectorAll('.rn').forEach(i=>i.onchange=(e)=>{dataRows[e.target.dataset.idx].name=e.target.value; saveLocalAndCloud();});
+    document.querySelectorAll('.fst').forEach(i=>i.onchange=(e)=>{let idx=e.target.dataset.idx; dataRows[idx].first=parseNum(e.target.value); saveLocalAndCloud(); renderDataTable();});
+    document.querySelectorAll('.snd').forEach(i=>i.onchange=(e)=>{let idx=e.target.dataset.idx; dataRows[idx].second=parseNum(e.target.value); saveLocalAndCloud(); renderDataTable();});
+    document.querySelectorAll('.del').forEach(b=>b.onclick=(e)=>{let idx=e.target.dataset.idx; if(confirm(`Delete "${dataRows[idx].name}"?`)){dataRows.splice(idx,1); saveLocalAndCloud(); renderDataTable(); toast('Deleted');}});
+}
+
+function renderTextRows(){
+    let c=document.getElementById('textRowsList'); if(!c)return; c.innerHTML='';
+    if(textRows.length===0){let e=document.createElement('div'); e.style.color='#999'; e.style.padding='8px'; e.innerText='No reminders. Click "Add Reminder"'; c.appendChild(e);}
+    textRows.forEach((t,i)=>{let d=document.createElement('div'); d.className='text-row-item'; d.innerHTML=`<textarea class="txt" data-idx="${i}" rows="2">${escape(t)}</textarea><div><button class="cpy" data-idx="${i}" class="btn-small">Copy</button> <button class="pst2" data-idx="${i}" class="btn-small">Paste</button> <button class="del2" data-idx="${i}" class="btn-small" style="background:#e74c3c;">Del</button></div>`; c.appendChild(d);});
+    document.querySelectorAll('.txt').forEach(t=>t.onchange=(e)=>{textRows[e.target.dataset.idx]=e.target.value.substring(0,250); saveLocalAndCloud();});
+    document.querySelectorAll('.cpy').forEach(b=>b.onclick=async(e)=>{await navigator.clipboard.writeText(textRows[e.currentTarget.dataset.idx]||''); toast('Copied');});
+    document.querySelectorAll('.pst2').forEach(b=>b.onclick=async(e)=>{let txt=await navigator.clipboard.readText(); textRows[e.currentTarget.dataset.idx]=txt.substring(0,250); saveLocalAndCloud(); renderTextRows(); toast('Pasted');});
+    document.querySelectorAll('.del2').forEach(b=>b.onclick=(e)=>{textRows.splice(e.currentTarget.dataset.idx,1); saveLocalAndCloud(); renderTextRows(); toast('Deleted');});
+}
+
+function loadLocalData(){
+    let s=localStorage.getItem('data_local');
+    if(s){let p=JSON.parse(s); dataRows=p.dataRows||[]; textRows=p.textRows||[]; dataRows=dataRows.map((r,i)=>({name:r.name||`Data ${i+1}`,first:r.first||0,second:r.second||0}));}
+    else{dataRows=[{name:"Data 1",first:1250.50,second:320.25},{name:"Data 2",first:850,second:245.3},{name:"Data 3",first:400.75,second:125}]; textRows=["Check inventory","Review budget"];}
+    renderDataTable(); renderTextRows();
+}
+
+function loadLocalCalendar(){
+    let s=localStorage.getItem('tasks_local');
+    if(s){let p=JSON.parse(s); tasksDB.clear(); for(let[k,v]of Object.entries(p)) tasksDB.set(k,{htmlContent:v});}
+    renderCalendar();
+}
+
+// Sync ID management
+document.getElementById('copySyncIdBtn').onclick=async()=>{
+    await navigator.clipboard.writeText(currentSyncId);
+    toast('✅ Sync ID copied! Paste on other device and click "New ID"');
+};
+document.getElementById('resetSyncIdBtn').onclick=()=>{
+    let newId = prompt("Enter existing Sync ID to join, or leave empty for new ID:", "");
+    if(newId === null) return;
+    if(newId.trim() === "") {
+        newId = "sync_" + Date.now() + "_" + Math.random().toString(36).substr(2, 12);
+        toast('🆕 Created new Sync ID');
+    } else {
+        toast('🔄 Switched to shared Sync ID');
+    }
+    setSyncId(newId);
+    loadFromCloud();
+};
+
+// Event listeners
+document.getElementById('helpBtn').onclick=()=>document.getElementById('helpModal').style.display='flex';
+document.getElementById('helpModal').onclick=(e)=>{if(e.target===document.getElementById('helpModal')) document.getElementById('helpModal').style.display='none';};
+document.getElementById('addDataRowBtn').onclick=()=>{dataRows.push({name:`Data ${dataRows.length+1}`,first:0,second:0}); saveLocalAndCloud(); renderDataTable(); toast('Row added');};
+document.getElementById('rewriteDataBtn').onclick=()=>{dataRows.forEach(r=>{r.second=parseNum(r.first);}); saveLocalAndCloud(); renderDataTable(); toast('Copied');};
+document.getElementById('addTextRowBtn').onclick=()=>{textRows.push(''); saveLocalAndCloud(); renderTextRows(); toast('Reminder added');};
+document.getElementById('backupDataBtn').onclick=()=>{let a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([JSON.stringify({dataRows,textRows})],{type:'application/json'})); a.download=`backup_${Date.now()}.json`; a.click(); toast('Backup saved');};
+document.getElementById('openDataBackupBtn').onclick=()=>{let inp=document.createElement('input'); inp.type='file'; inp.accept='application/json'; inp.onchange=e=>{let f=e.target.files[0]; if(!f)return; let r=new FileReader(); r.onload=ev=>{let imp=JSON.parse(ev.target.result); dataRows=imp.dataRows||[]; textRows=imp.textRows||[]; dataRows=dataRows.map((r,i)=>({name:r.name||`Data ${i+1}`,first:r.first||0,second:r.second||0})); saveLocalAndCloud(); renderDataTable(); renderTextRows(); toast('Restored');}; r.readAsText(f);}; inp.click();};
+document.getElementById('exportDataXLSXBtn').onclick=()=>{let ws=XLSX.utils.aoa_to_sheet([["Name","#1","#2","Result"],...dataRows.map(r=>[r.name,formatNum(r.first),formatNum(r.second),formatNum(parseNum(r.first)-parseNum(r.second))])]); let wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,ws,"Data"); XLSX.writeFile(wb,`data_${Date.now()}.xlsx`); toast('XLSX exported');};
+document.getElementById('exportDataPDFBtn').onclick=async()=>{toast('Generating PDF...'); let d=document.createElement('div'); d.innerHTML=`<h2>Data</h2><table border="1">${dataRows.map(r=>`<tr><td>${escape(r.name)}</td><td>${formatNum(r.first)}</td><td>${formatNum(r.second)}</td><td class="result-cell">${formatNum(parseNum(r.first)-parseNum(r.second))}</td></tr>`).join('')} </table>`; document.body.appendChild(d); let c=await html2canvas(d); document.body.removeChild(d); let pdf=new jspdf.jsPDF(); pdf.addImage(c.toDataURL(),'PNG',10,10,190,0); pdf.save('export.pdf'); toast('PDF exported');};
+document.getElementById('backupBtn').onclick=()=>{let a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([JSON.stringify(Object.fromEntries([...tasksDB.entries()].map(([k,v])=>[k,v.htmlContent])))],{type:'application/json'})); a.download=`tasks_${Date.now()}.json`; a.click(); toast('Backup saved');};
+document.getElementById('openBackupBtn').onclick=()=>{let inp=document.createElement('input'); inp.type='file'; inp.accept='application/json'; inp.onchange=e=>{let f=e.target.files[0]; if(!f)return; let r=new FileReader(); r.onload=ev=>{let imp=JSON.parse(ev.target.result); tasksDB.clear(); for(let[k,v]of Object.entries(imp)) tasksDB.set(k,{htmlContent:v}); saveLocalAndCloud(); renderCalendar(); toast('Restored');}; r.readAsText(f);}; inp.click();};
+document.getElementById('exportXLSXBtn').onclick=()=>{let ws=XLSX.utils.aoa_to_sheet([["Date","Task"],...Array.from(tasksDB.entries()).map(([d,{htmlContent}])=>[d,stripHtml(htmlContent)])]); let wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,ws,"Calendar"); XLSX.writeFile(wb,`calendar.xlsx`); toast('XLSX exported');};
+document.getElementById('exportPDFBtn').onclick=async()=>{toast('Generating PDF...'); let d=document.createElement('div'); d.innerHTML=`<h2>Calendar Tasks</h2><table border="1">${Array.from(tasksDB.entries()).map(([dt,{htmlContent}])=>`<tr><td>${dt}</td><td>${htmlContent}</td></tr>`).join('')} </table>`; document.body.appendChild(d); let c=await html2canvas(d); document.body.removeChild(d); let pdf=new jspdf.jsPDF('landscape'); pdf.addImage(c.toDataURL(),'PNG',10,10,280,0); pdf.save('calendar.pdf'); toast('PDF exported');};
+document.getElementById('prevMonthBtn').onclick=()=>{currentDisplayDate.setMonth(currentDisplayDate.getMonth()-1); renderCalendar();};
+document.getElementById('nextMonthBtn').onclick=()=>{currentDisplayDate.setMonth(currentDisplayDate.getMonth()+1); renderCalendar();};
+document.getElementById('todayBtn').onclick=()=>{currentDisplayDate=new Date(); renderCalendar();};
+document.querySelectorAll('.tab-btn').forEach(btn=>btn.onclick=()=>{document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active')); btn.classList.add('active'); document.querySelectorAll('.tab-pane').forEach(p=>p.classList.remove('active')); document.getElementById(`${btn.dataset.tab}Tab`).classList.add('active'); if(btn.dataset.tab==='data'){renderDataTable();renderTextRows();}else renderCalendar();});
+
+loadLocalCalendar();
+loadLocalData();
+initFirebase();
+</script>
+</body>
+</html>
