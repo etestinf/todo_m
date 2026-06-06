@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Task Manager - Fixed Sync</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <script src="https://cdn.sheetjs.com/xlsx-0.20.2/package/dist/xlsx.full.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
+    <style>
+        * { box-sizing: border-box; font-family: 'Segoe UI', sans-serif; }
+        body { background: #e9f0f5; margin: 0; padding: 12px; }
+        .main-container { max-width: 1400px; margin: 0 auto; background: white; border-radius: 24px; padding: 16px; }
+        .sync-status { background: #e8f4f8; padding: 8px 12px; border-radius: 20px; font-size: 0.8rem; margin-bottom: 10px; }
+        .sync-status.success { background: #d4edda; color: #155724; }
+        .sync-status.error { background: #f8d7da; color: #721c24; }
+        .sync-status.syncing { background: #fff3cd; color: #856404; }
+        .tabs { display: flex; gap: 6px; margin-bottom: 18px; }
+        .tab-btn { background: #e9ecef; border: none; padding: 8px 20px; border-radius: 30px; cursor: pointer; }
+        .tab-btn.active { background: #2c7da0; color: white; }
+        .tab-pane { display: none; }
+        .tab-pane.active { display: block; }
+        .calendar-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 5px; margin-top: 12px; }
+        .weekday { text-align: center; font-weight: bold; padding: 8px; background: #d9e9f2; border-radius: 16px; }
+        .calendar-day { background: white; border: 1px solid #cfdfe8; border-radius: 14px; min-height: 90px; padding: 6px; cursor: pointer; }
+        .calendar-day:hover { background: #fef9e3; }
+        .calendar-day.holiday { background: #ffeaea; border-color: #e74c3c; }
+        .day-number { font-weight: bold; font-size: 1rem; display: inline-block; background: #eff3f6; padding: 0 6px; border-radius: 20px; }
+        .task-preview { font-size: 0.65rem; background: #eef4fc; padding: 2px 4px; border-radius: 10px; margin-top: 3px; white-space: nowrap; overflow: hidden; }
+        .has-task { border-left: 4px solid #f39c12; }
+        .data-table { width: 100%; border-collapse: collapse; margin-bottom: 16px; }
+        .data-table th, .data-table td { border: 1px solid #ccc; padding: 6px; text-align: center; }
+        .data-table th { background: #2c7da0; color: white; }
+        .data-table input { width: 100%; padding: 4px; border: 1px solid #bbb; border-radius: 6px; text-align: right; }
+        .delete-row-btn { background: #e74c3c; border: none; border-radius: 20px; padding: 4px 8px; color: white; cursor: pointer; }
+        .result-cell { background: #e8f4f8; font-weight: bold; }
+        .section-buttons { display: flex; gap: 8px; margin: 12px 0; flex-wrap: wrap; }
+        .section-buttons button { background: #3f7e6b; border: none; padding: 6px 14px; border-radius: 30px; color: white; cursor: pointer; }
+        .text-row-item { display: flex; gap: 8px; margin-bottom: 10px; background: #f9f9f9; padding: 6px; border-radius: 14px; }
+        .text-row-item textarea { flex: 1; padding: 6px; border-radius: 10px; border: 1px solid #ccc; }
+        .btn-small { background: #5a6e7a; border: none; border-radius: 20px; padding: 4px 10px; color: white; cursor: pointer; }
+        .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); justify-content: center; align-items: center; z-index: 3000; }
+        .modal-content { background: white; width: 90%; max-width: 600px; border-radius: 28px; padding: 20px; }
+        .task-editor-toolbar { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; background: #f2f2f2; padding: 8px; border-radius: 40px; }
+        .task-editor-toolbar button, .task-editor-toolbar select, .task-editor-toolbar input { background: white; border: 1px solid #bbb; border-radius: 20px; padding: 4px 10px; cursor: pointer; }
+        .task-textarea { width: 100%; min-height: 150px; padding: 10px; border-radius: 16px; border: 1px solid #ccc; }
+        .warning-toast { position: fixed; bottom: 20px; right: 20px; background: #e67e22; color: white; padding: 10px 16px; border-radius: 50px; z-index: 2500; }
+    </style>
+</head>
+<body>
+<div class="main-container">
+    <div class="sync-status" id="syncStatus">🔄 Initializing Firebase...</div>
+    <div class="tabs">
+        <button class="tab-btn active" data-tab="calendar">📅 Calendar</button>
+        <button class="tab-btn" data-tab="data">📊 Data</button>
+    </div>
+    <div id="calendarTab" class="tab-pane active">
+        <div style="display: flex; justify-content: space-between; margin-bottom: 16px;">
+            <div><button id="prevMonthBtn">◀ Prev</button> <button id="nextMonthBtn">Next ▶</button> <button id="todayBtn">Today</button></div>
+            <div class="month-year" id="monthYearDisplay" style="font-size:1.3rem;font-weight:bold;"></div>
+            <div><button id="backupBtn">💾</button> <button id="openBackupBtn">📂</button> <button id="exportXLSXBtn">📊</button> <button id="exportPDFBtn">📄</button></div>
+        </div>
+        <div class="calendar-grid" id="calendarGrid"></div>
+    </div>
+    <div id="dataTab" class="tab-pane">
+        <table class="data-table"><thead><tr><th>Name</th><th>#1</th><th>#2</th><th>Result</th></tr></thead><tbody id="dataTableBody"></tbody></table>
+        <div class="section-buttons"><button id="addDataRowBtn">+ Add Row</button><button id="rewriteDataBtn">Copy #1→#2</button></div>
+        <div><h4>Reminders</h4><div id="textRowsList"></div>
+        <div class="section-buttons"><button id="addTextRowBtn">+ Add Reminder</button><button id="backupDataBtn">💾 Backup</button><button id="openDataBackupBtn">📂 Open</button><button id="exportDataXLSXBtn">📊 XLSX</button><button id="exportDataPDFBtn">📄 PDF</button></div></div>
+    </div>
+</div>
+
+<script>
+// ===== 🔥 PASTE YOUR FIREBASE CONFIG HERE 🔥 =====
+const firebaseConfig = {
+  apiKey: "AIzaSyCGebPPoZzKIhzWkVRyq4r3npSrUfCeldU",
+  authDomain: "taskm-sync.firebaseapp.com",
+  projectId: "taskm-sync",
+  storageBucket: "taskm-sync.firebasestorage.app",
+  messagingSenderId: "346850678373",
+  appId: "1:346850678373:web:51e6d213db2daca667588c"
+};
+// =================================================
+
+let tasksDB = new Map();
+let currentDisplayDate = new Date();
+let dataRows = [];
+let textRows = [];
+let db = null;
+let firebaseReady = false;
+
+function updateSyncStatus(message, type) {
+    const el = document.getElementById('syncStatus');
+    if(el) {
+        el.innerHTML = message;
+        el.className = 'sync-status ' + type;
+    }
+}
+
+// Initialize Firebase
+function initFirebase() {
+    if(firebaseConfig.apiKey === "YOUR_API_KEY") {
+        updateSyncStatus('⚠️ Configure Firebase: Replace YOUR_API_KEY in the code', 'error');
+        return false;
+    }
+    try {
+        firebase.initializeApp(firebaseConfig);
+        db = firebase.database();
+        firebaseReady = true;
+        updateSyncStatus('✅ Connected to cloud! Data will sync across devices.', 'success');
+        loadFromCloud();
+        return true;
+    } catch(e) {
+        updateSyncStatus('❌ Firebase error: ' + e.message, 'error');
+        return false;
+    }
+}
+
+function getDeviceId() {
+    let id = localStorage.getItem("device_id");
+    if(!id) {
+        id = "device_" + Date.now() + "_" + Math.random().toString(36).substr(2, 9);
+        localStorage.setItem("device_id", id);
+    }
+    return id;
+}
+
+const deviceId = getDeviceId();
+
+function saveToCloud() {
+    if(!firebaseReady || !db) return;
+    const tasksData = {};
+    for(let [k,v] of tasksDB.entries()) tasksData[k] = v.htmlContent;
+    const dataData = { dataRows, textRows };
+    db.ref(`users/${deviceId}/tasks`).set(tasksData);
+    db.ref(`users/${deviceId}/data`).set(dataData);
+}
+
+function loadFromCloud() {
+    if(!firebaseReady || !db) return;
+    updateSyncStatus('🔄 Loading from cloud...', 'syncing');
+    db.ref(`users/${deviceId}`).once('value').then(snap => {
+        const data = snap.val();
+        if(data && data.tasks) {
+            tasksDB.clear();
+            for(let [k,v] of Object.entries(data.tasks)) {
+                tasksDB.set(k, { htmlContent: v });
+            }
+        }
+        if(data && data.data) {
+            if(data.data.dataRows) {
+                dataRows = data.data.dataRows;
+                textRows = data.data.textRows || [];
+                dataRows = dataRows.map((r,i) => ({
+                    name: r.name || `Data ${i+1}`,
+                    first: r.first || 0,
+                    second: r.second || 0
+                }));
+            }
+        }
+        renderCalendar();
+        renderDataTable();
+        renderTextRows();
+        updateSyncStatus('✅ Cloud sync active! Your data is backed up.', 'success');
+    }).catch(e => {
+        updateSyncStatus('⚠️ Cloud unavailable - using local storage only', 'error');
+        console.warn(e);
+    });
+}
+
+function saveLocally() {
+    localStorage.setItem('tasks_local', JSON.stringify(Object.fromEntries([...tasksDB.entries()].map(([k,v])=>[k,v.htmlContent]))));
+    localStorage.setItem('data_local', JSON.stringify({dataRows, textRows}));
+    saveToCloud();
+}
+
+function getHolidays(y){
+    let h={};
+    h[`${y}-01-01`]="New Year"; h[`${y}-05-01`]="Labour"; h[`${y}-06-23`]="Līgo"; h[`${y}-06-24`]="Jāņi";
+    h[`${y}-11-18`]="Independence"; h[`${y}-12-24`]="Xmas Eve"; h[`${y}-12-25`]="Xmas"; h[`${y}-12-26`]="Boxing Day";
+    return h;
+}
+
+function stripHtml(h){let d=document.createElement('div'); d.innerHTML=h; return d.innerText||'';}
+function formatNum(v){let n=parseFloat(v); if(isNaN(n)) return '0,00'; return n.toFixed(2).replace('.',',');}
+function parseNum(v){if(typeof v==='string') v=v.replace(',','.'); let n=parseFloat(v); return isNaN(n)?0:n;}
+function escape(s){if(!s)return ''; return s.replace(/[&<>]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[m]));}
+function toast(m){let t=document.createElement('div'); t.className='warning-toast'; t.innerText=m; document.body.appendChild(t); setTimeout(()=>t.remove(),2500);}
+
+function renderCalendar(){
+    let y=currentDisplayDate.getFullYear(), m=currentDisplayDate.getMonth(), hol=getHolidays(y);
+    let first=new Date(y,m,1), startOff=(first.getDay()===0?6:first.getDay()-1), days=new Date(y,m+1,0).getDate();
+    let grid=document.getElementById('calendarGrid'); grid.innerHTML='';
+    ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].forEach(d=>{let w=document.createElement('div'); w.className='weekday'; w.innerText=d; grid.appendChild(w);});
+    for(let i=0;i<42;i++){
+        let cell=document.createElement('div'); cell.className='calendar-day';
+        let day=i-startOff+1, ok=day>=1&&day<=days;
+        let ds=ok?`${y}-${String(m+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`:'';
+        let num=document.createElement('div'); num.className='day-number'; num.innerText=ok?day:''; cell.appendChild(num);
+        if(ok&&hol[ds]){cell.classList.add('holiday');}
+        if(ok&&tasksDB.has(ds)){cell.classList.add('has-task'); let t=tasksDB.get(ds); let txt=stripHtml(t.htmlContent); let p=document.createElement('div'); p.className='task-preview'; p.innerText=txt.length>22?txt.slice(0,19)+'...':txt; cell.appendChild(p);}
+        if(ok) cell.onclick=()=>openEditor(ds,y,m,day);
+        else cell.style.background='#f8fafc';
+        grid.appendChild(cell);
+    }
+    document.getElementById('monthYearDisplay').innerText=`${first.toLocaleString('default',{month:'long'})} ${y}`;
+}
+
+function openEditor(ds,y,m,d){
+    let modal=document.createElement('div'); modal.className='modal'; modal.style.display='flex';
+    modal.innerHTML=`<div class="modal-content"><h3>Task for ${y}-${m+1}-${d}</h3><div class="task-editor-toolbar"><select id="fs"><option>12</option><option selected>14</option><option>18</option><option>22</option></select><input type="color" id="fc" value="#000"><button id="bb">B</button><button id="it">I</button><button id="ul">U</button><button id="lst">• List</button><button id="cp">Copy</button><button id="pst">Paste</button></div><div contenteditable="true" id="ed" class="task-textarea"></div><div style="text-align:right"><span id="cnt">0</span>/250</div><div style="margin-top:12px;display:flex;gap:8px;justify-content:flex-end;"><button id="sv" style="background:#2ecc71;padding:6px 16px;border-radius:30px;">Save</button><button id="cn" style="background:#95a5a6;padding:6px 16px;border-radius:30px;">Cancel</button></div></div>`;
+    document.body.appendChild(modal);
+    let ex=tasksDB.get(ds), ed=document.getElementById('ed');
+    if(ex) ed.innerHTML=ex.htmlContent;
+    let upd=()=>{let l=ed.innerText.length; document.getElementById('cnt').innerText=l;};
+    ed.addEventListener('input',upd); upd();
+    document.getElementById('fs').onchange=(e)=>{ed.style.fontSize=e.target.value+'px';};
+    document.getElementById('fc').oninput=(e)=>{document.execCommand('foreColor',false,e.target.value); ed.focus();};
+    document.getElementById('bb').onclick=()=>{document.execCommand('bold'); ed.focus();};
+    document.getElementById('it').onclick=()=>{document.execCommand('italic'); ed.focus();};
+    document.getElementById('ul').onclick=()=>{document.execCommand('underline'); ed.focus();};
+    document.getElementById('lst').onclick=()=>{document.execCommand('insertUnorderedList'); ed.focus();};
+    document.getElementById('cp').onclick=async()=>{let s=window.getSelection(); await navigator.clipboard.writeText(s?s.toString():ed.innerText); toast('Copied');};
+    document.getElementById('pst').onclick=async()=>{let t=await navigator.clipboard.readText(); document.execCommand('insertText',false,t); ed.focus();};
+    document.getElementById('sv').onclick=()=>{let h=ed.innerHTML; if(stripHtml(h).length>250){alert('Max 250 chars');return;} if(stripHtml(h).length===0)tasksDB.delete(ds); else tasksDB.set(ds,{htmlContent:h}); saveLocally(); renderCalendar(); modal.remove(); toast('Saved');};
+    document.getElementById('cn').onclick=()=>modal.remove();
+}
+
+function renderDataTable(){
+    let tbody=document.getElementById('dataTableBody'); if(!tbody)return;
+    tbody.innerHTML='';
+    dataRows.forEach((r,i)=>{let res=parseNum(r.first)-parseNum(r.second);
+        let tr=document.createElement('tr');
+        tr.innerHTML=`<td><input type="text" class="rn" value="${escape(r.name)}" data-idx="${i}" style="text-align:left"></td>
+                      <td><input type="text" class="fst" value="${formatNum(r.first)}" data-idx="${i}"></td>
+                      <td><input type="text" class="snd" value="${formatNum(r.second)}" data-idx="${i}"></td>
+                      <td class="result-cell">${formatNum(res)} <button class="del" data-idx="${i}" style="background:#e74c3c;border:none;border-radius:20px;padding:2px 8px;margin-left:5px;color:white;">Del</button></td>`;
+        tbody.appendChild(tr);
+    });
+    document.querySelectorAll('.rn').forEach(i=>i.onchange=(e)=>{dataRows[e.target.dataset.idx].name=e.target.value; saveLocally();});
+    document.querySelectorAll('.fst').forEach(i=>i.onchange=(e)=>{let idx=e.target.dataset.idx; dataRows[idx].first=parseNum(e.target.value); saveLocally(); renderDataTable();});
+    document.querySelectorAll('.snd').forEach(i=>i.onchange=(e)=>{let idx=e.target.dataset.idx; dataRows[idx].second=parseNum(e.target.value); saveLocally(); renderDataTable();});
+    document.querySelectorAll('.del').forEach(b=>b.onclick=(e)=>{let idx=e.target.dataset.idx; if(confirm(`Delete "${dataRows[idx].name}"?`)){dataRows.splice(idx,1); saveLocally(); renderDataTable(); toast('Deleted');}});
+}
+
+function renderTextRows(){
+    let c=document.getElementById('textRowsList'); if(!c)return; c.innerHTML='';
+    if(textRows.length===0){let e=document.createElement('div'); e.style.color='#999'; e.style.padding='8px'; e.innerText='No reminders. Click "Add Reminder"'; c.appendChild(e);}
+    textRows.forEach((t,i)=>{let d=document.createElement('div'); d.className='text-row-item'; d.innerHTML=`<textarea class="txt" data-idx="${i}" rows="2">${escape(t)}</textarea><div><button class="cpy" data-idx="${i}" class="btn-small">Copy</button> <button class="pst2" data-idx="${i}" class="btn-small">Paste</button> <button class="del2" data-idx="${i}" class="btn-small" style="background:#e74c3c;">Del</button></div>`; c.appendChild(d);});
+    document.querySelectorAll('.txt').forEach(t=>t.onchange=(e)=>{textRows[e.target.dataset.idx]=e.target.value.substring(0,250); saveLocally();});
+    document.querySelectorAll('.cpy').forEach(b=>b.onclick=async(e)=>{await navigator.clipboard.writeText(textRows[e.currentTarget.dataset.idx]||''); toast('Copied');});
+    document.querySelectorAll('.pst2').forEach(b=>b.onclick=async(e)=>{let txt=await navigator.clipboard.readText(); textRows[e.currentTarget.dataset.idx]=txt.substring(0,250); saveLocally(); renderTextRows(); toast('Pasted');});
+    document.querySelectorAll('.del2').forEach(b=>b.onclick=(e)=>{textRows.splice(e.currentTarget.dataset.idx,1); saveLocally(); renderTextRows(); toast('Deleted');});
+}
+
+function loadLocalData(){
+    let s=localStorage.getItem('data_local');
+    if(s){let p=JSON.parse(s); dataRows=p.dataRows||[]; textRows=p.textRows||[]; dataRows=dataRows.map((r,i)=>({name:r.name||`Data ${i+1}`,first:r.first||0,second:r.second||0}));}
+    else{dataRows=[{name:"Data 1",first:1250.50,second:320.25},{name:"Data 2",first:850,second:245.3},{name:"Data 3",first:400.75,second:125}]; textRows=["Check inventory","Review budget"];}
+    renderDataTable(); renderTextRows();
+}
+
+function loadLocalCalendar(){
+    let s=localStorage.getItem('tasks_local');
+    if(s){let p=JSON.parse(s); tasksDB.clear(); for(let[k,v]of Object.entries(p)) tasksDB.set(k,{htmlContent:v});}
+    renderCalendar();
+}
+
+// Event listeners
+document.getElementById('addDataRowBtn').onclick=()=>{dataRows.push({name:`Data ${dataRows.length+1}`,first:0,second:0}); saveLocally(); renderDataTable(); toast('Row added');};
+document.getElementById('rewriteDataBtn').onclick=()=>{dataRows.forEach(r=>{r.second=parseNum(r.first);}); saveLocally(); renderDataTable(); toast('Copied');};
+document.getElementById('addTextRowBtn').onclick=()=>{textRows.push(''); saveLocally(); renderTextRows(); toast('Reminder added');};
+document.getElementById('backupDataBtn').onclick=()=>{let a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([JSON.stringify({dataRows,textRows})],{type:'application/json'})); a.download=`backup_${Date.now()}.json`; a.click(); toast('Backup saved');};
+document.getElementById('openDataBackupBtn').onclick=()=>{let inp=document.createElement('input'); inp.type='file'; inp.accept='application/json'; inp.onchange=e=>{let f=e.target.files[0]; if(!f)return; let r=new FileReader(); r.onload=ev=>{let imp=JSON.parse(ev.target.result); dataRows=imp.dataRows||[]; textRows=imp.textRows||[]; saveLocally(); renderDataTable(); renderTextRows(); toast('Restored');}; r.readAsText(f);}; inp.click();};
+document.getElementById('exportDataXLSXBtn').onclick=()=>{let ws=XLSX.utils.aoa_to_sheet([["Name","#1","#2","Result"],...dataRows.map(r=>[r.name,formatNum(r.first),formatNum(r.second),formatNum(parseNum(r.first)-parseNum(r.second))])]); let wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,ws,"Data"); XLSX.writeFile(wb,`data_export.xlsx`); toast('XLSX exported');};
+document.getElementById('exportDataPDFBtn').onclick=async()=>{toast('Generating PDF...'); let d=document.createElement('div'); d.innerHTML=`<h2>Data</h2><table border="1">${dataRows.map(r=>`<tr><td>${escape(r.name)}</td><td>${formatNum(r.first)}</td><td>${formatNum(r.second)}</td><td>${formatNum(parseNum(r.first)-parseNum(r.second))}</td></tr>`).join('')}</table>`; document.body.appendChild(d); let c=await html2canvas(d); document.body.removeChild(d); let pdf=new jspdf.jsPDF(); pdf.addImage(c.toDataURL(),'PNG',10,10,190,0); pdf.save('export.pdf'); toast('PDF exported');};
+document.getElementById('backupBtn').onclick=()=>{let a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([JSON.stringify(Object.fromEntries([...tasksDB.entries()].map(([k,v])=>[k,v.htmlContent])))],{type:'application/json'})); a.download=`tasks_backup_${Date.now()}.json`; a.click(); toast('Backup saved');};
+document.getElementById('openBackupBtn').onclick=()=>{let inp=document.createElement('input'); inp.type='file'; inp.accept='application/json'; inp.onchange=e=>{let f=e.target.files[0]; if(!f)return; let r=new FileReader(); r.onload=ev=>{let imp=JSON.parse(ev.target.result); tasksDB.clear(); for(let[k,v]of Object.entries(imp)) tasksDB.set(k,{htmlContent:v}); saveLocally(); renderCalendar(); toast('Restored');}; r.readAsText(f);}; inp.click();};
+document.getElementById('exportXLSXBtn').onclick=()=>{let ws=XLSX.utils.aoa_to_sheet([["Date","Task"],...Array.from(tasksDB.entries()).map(([d,{htmlContent}])=>[d,stripHtml(htmlContent)])]); let wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,ws,"Calendar"); XLSX.writeFile(wb,`calendar.xlsx`); toast('XLSX exported');};
+document.getElementById('exportPDFBtn').onclick=async()=>{toast('Generating PDF...'); let d=document.createElement('div'); d.innerHTML=`<h2>Calendar Tasks</h2><table border="1">${Array.from(tasksDB.entries()).map(([dt,{htmlContent}])=>`<tr><td>${dt}</td><td>${htmlContent}</td></tr>`).join('')}</table>`; document.body.appendChild(d); let c=await html2canvas(d); document.body.removeChild(d); let pdf=new jspdf.jsPDF('landscape'); pdf.addImage(c.toDataURL(),'PNG',10,10,280,0); pdf.save('calendar.pdf'); toast('PDF exported');};
+document.getElementById('prevMonthBtn').onclick=()=>{currentDisplayDate.setMonth(currentDisplayDate.getMonth()-1); renderCalendar();};
+document.getElementById('nextMonthBtn').onclick=()=>{currentDisplayDate.setMonth(currentDisplayDate.getMonth()+1); renderCalendar();};
+document.getElementById('todayBtn').onclick=()=>{currentDisplayDate=new Date(); renderCalendar();};
+document.querySelectorAll('.tab-btn').forEach(btn=>btn.onclick=()=>{document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active')); btn.classList.add('active'); document.querySelectorAll('.tab-pane').forEach(p=>p.classList.remove('active')); document.getElementById(`${btn.dataset.tab}Tab`).classList.add('active'); if(btn.dataset.tab==='data'){renderDataTable();renderTextRows();}else renderCalendar();});
+
+// Start app
+loadLocalCalendar();
+loadLocalData();
+initFirebase();
+</script>
+</body>
+</html>
